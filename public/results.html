@@ -76,6 +76,8 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
+           // ----- НАЧАЛО БЛОКА SCRIPT -----
+
         let resultsChart = null; // Переменная для хранения экземпляра диаграммы
         const loadingIndicator = document.getElementById('loading-indicator');
         const resultsContent = document.getElementById('results-content');
@@ -83,23 +85,41 @@
         const resetButton = document.getElementById('reset-button');
 
         // --- Показать ошибку ---
+        // !!! ВОТ ИЗМЕНЕННАЯ ФУНКЦИЯ showError !!!
         function showError(message) {
             errorMessage.textContent = message;
-            errorMessage.classList.remove('hidden');
-            loadingIndicator.classList.add('hidden'); // Скрыть индикатор загрузки
-             resultsContent.classList.add('hidden'); // Скрыть основное содержимое тоже
+            errorMessage.classList.remove('hidden'); // Показываем блок ошибки
+
+            loadingIndicator.style.display = 'none'; // ЯВНО скрываем загрузчик стилем
+            loadingIndicator.classList.add('hidden'); // Класс тоже добавляем (на всякий случай)
+
+            resultsContent.style.display = 'none'; // ЯВНО скрываем контент стилем
+            resultsContent.classList.add('hidden'); // Добавляем класс
         }
 
         // --- Загрузка и отображение результатов ---
+        // !!! ВОТ ИЗМЕНЕННАЯ ФУНКЦИЯ displayResults !!!
         async function displayResults() {
+            // Явно задаем начальное состояние стилями
+            loadingIndicator.style.display = 'flex'; // Показываем как flex (как в CSS)
             loadingIndicator.classList.remove('hidden');
+
+            resultsContent.style.display = 'none'; // Скрываем контент
             resultsContent.classList.add('hidden');
-            errorMessage.classList.add('hidden');
+
+            errorMessage.classList.add('hidden'); // Скрываем ошибки
+            errorMessage.textContent = ''; // Очищаем текст ошибки
 
             try {
-                const response = await fetch('/api/results', { method: 'GET' }); 
+                const response = await fetch('/api/results', { method: 'GET' });
                 if (!response.ok) {
-                    throw new Error(`Не удалось загрузить данные (${response.status})`);
+                     // Попытка получить JSON с ошибкой от API перед созданием стандартной ошибки
+                    let errorMsg = `Ошибка ${response.status}`;
+                    try {
+                        const errorData = await response.json();
+                        errorMsg = errorData.error || errorMsg;
+                    } catch(e) {}
+                    throw new Error(errorMsg); // Используем извлеченное или стандартное сообщение
                 }
                 const surveyResults = await response.json();
 
@@ -134,9 +154,16 @@
                 // Создаем или обновляем диаграмму
                 createChart(surveyResults, optionsOrder);
 
-                // Показываем результаты
-                loadingIndicator.classList.add('hidden');
-                resultsContent.classList.remove('hidden');
+                // Показываем результаты и ЯВНО скрываем загрузчик стилем
+                console.log("Попытка скрыть загрузчик и показать контент..."); // Для отладки
+
+                loadingIndicator.style.display = 'none'; // <--- ЯВНО Скрываем стилем
+                loadingIndicator.classList.add('hidden'); // Класс тоже
+
+                resultsContent.style.display = ''; // <--- Сбрасываем инлайн-стиль (чтобы CSS управлял)
+                resultsContent.classList.remove('hidden'); // Убираем класс
+
+                console.log("Загрузчик должен быть скрыт, контент показан."); // Для отладки
 
             } catch (error) {
                 console.error("Ошибка при загрузке результатов:", error);
@@ -145,76 +172,43 @@
         }
 
         // --- Создание/обновление диаграммы ---
+        // !!! ЭТА ФУНКЦИЯ ОСТАЕТСЯ БЕЗ ИЗМЕНЕНИЙ !!!
         function createChart(data, labelsOrder) {
             const ctx = document.getElementById('results-chart').getContext('2d');
-
-            if (resultsChart) {
-                resultsChart.destroy(); // Уничтожаем старую диаграмму перед созданием новой
-            }
-
+            if (resultsChart) { resultsChart.destroy(); }
             const labels = labelsOrder;
             const values = labels.map(label => data[label] || 0);
-
             const backgroundColors = ['#818cf8', '#6366f1', '#4f46e5', '#4338ca', '#3730a3'];
             const borderColors = ['#e0e7ff', '#c7d2fe', '#a5b4fc', '#818cf8', '#6366f1'];
-
-             const total = values.reduce((a, b) => a + b, 0);
-
+            const total = values.reduce((a, b) => a + b, 0);
             resultsChart = new Chart(ctx, {
-                 type: total > 0 ? 'pie' : 'bar', // Показываем столбцы, если данных нет, иначе pie
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Кол-во ответов',
-                        data: values,
-                        backgroundColor: backgroundColors,
-                        borderColor: borderColors,
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: total > 0, position: 'bottom', labels: { padding: 20, font: { size: 12 } } }, // Скрыть легенду если нет данных
-                        tooltip: {
-                             enabled: total > 0, // Отключить тултипы если нет данных
-                            callbacks: {
-                                label: function(context) {
-                                    const label = context.label || '';
-                                    const value = context.raw || 0;
-                                    const currentTotal = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
-                                    const percentage = currentTotal === 0 ? 0 : Math.round((value / currentTotal) * 100);
-                                    return `${label}: ${value} (${percentage}%)`;
-                                }
-                            }
-                        },
-                        title: { display: false }
-                    },
-                    // Скрыть оси для pie-чарта, но показать для bar-чарта (когда нет данных)
-                     scales: {
-                         y: { display: total === 0, beginAtZero: true, ticks: { stepSize: 1 } }, // Показать ось Y для bar
-                         x: { display: total === 0 } // Показать ось X для bar
-                     }
-                }
+                 type: total > 0 ? 'pie' : 'bar',
+                 data: { labels: labels, datasets: [{ label: 'Кол-во ответов', data: values, backgroundColor: backgroundColors, borderColor: borderColors, borderWidth: 1 }] },
+                 options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: total > 0, position: 'bottom', labels: { padding: 20, font: { size: 12 } } }, tooltip: { enabled: total > 0, callbacks: { label: function(context) { const label = context.label || ''; const value = context.raw || 0; const currentTotal = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0); const percentage = currentTotal === 0 ? 0 : Math.round((value / currentTotal) * 100); return `${label}: ${value} (${percentage}%)`; } } }, title: { display: false } }, scales: { y: { display: total === 0, beginAtZero: true, ticks: { stepSize: 1 } }, x: { display: total === 0 } } }
             });
         }
 
         // --- Сброс результатов ---
+         // !!! ЭТА ФУНКЦИЯ ОСТАЕТСЯ БЕЗ ИЗМЕНЕНИЙ (она уже была правильной) !!!
         async function resetSurvey() {
             if (confirm('Вы уверены, что хотите сбросить ВСЕ результаты опроса? Это действие нельзя отменить.')) {
                 resetButton.disabled = true;
                 resetButton.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Сброс...';
                 errorMessage.classList.add('hidden');
-
                 try {
                     const response = await fetch('/api/results', { method: 'POST',headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reset' }) });
                     if (!response.ok) {
-                         throw new Error(`Ошибка сервера при сбросе (${response.status})`);
+                         // Попытка получить JSON с ошибкой от API перед созданием стандартной ошибки
+                         let errorMsg = `Ошибка сервера при сбросе (${response.status})`;
+                         try {
+                            const errorData = await response.json();
+                            errorMsg = errorData.error || errorMsg;
+                         } catch(e){}
+                         throw new Error(errorMsg);
                     }
                     // Успешно сброшено, перезагружаем данные
                     await displayResults();
-                    alert("Результаты успешно сброшены."); // Сообщение об успехе
+                    // alert("Результаты успешно сброшены."); // Можно раскомментировать, если нужно
 
                 } catch (error) {
                      console.error("Ошибка при сбросе результатов:", error);
@@ -227,8 +221,10 @@
         }
 
         // --- Выполняем при загрузке страницы ---
+        // !!! ЭТА СТРОКА ОСТАЕТСЯ БЕЗ ИЗМЕНЕНИЙ !!!
         document.addEventListener('DOMContentLoaded', displayResults);
 
+        // ----- КОНЕЦ БЛОКА SCRIPT -----
     </script>
 </body>
 </html>
