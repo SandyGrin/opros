@@ -97,7 +97,7 @@
             errorMessage.classList.add('hidden');
 
             try {
-                const response = await fetch('/api/results', { method: 'GET' }'); // Запрос к нашему серверу
+                const response = await fetch('/api/results', { method: 'GET' }); 
                 if (!response.ok) {
                     throw new Error(`Не удалось загрузить данные (${response.status})`);
                 }
