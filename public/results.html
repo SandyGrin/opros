@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Результаты опроса</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Стили fade-in */
+        .fade-in { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        /* Стиль для загрузки */
+         #loading-indicator { display: flex; justify-content: center; align-items: center; min-height: 200px; }
+         #results-content.hidden { display: none; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center py-12 px-4">
+
+    <!-- Страница результатов -->
+    <div id="results-page" class="w-full max-w-4xl">
+        <div class="bg-white rounded-xl shadow-lg overflow-hidden fade-in">
+            <div class="bg-indigo-600 py-6 px-8 flex justify-between items-center">
+                <h1 class="text-2xl font-bold text-white flex items-center">
+                    <i class="fas fa-chart-pie mr-3"></i>
+                    Результаты опроса
+                </h1>
+            </div>
+
+            <div class="p-8">
+                <div id="loading-indicator">
+                    <i class="fas fa-spinner fa-spin text-4xl text-indigo-600"></i>
+                    <span class="ml-4 text-gray-600">Загрузка результатов...</span>
+                </div>
+
+                <div id="results-content" class="hidden">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-6">Сколько часов в день люди проводят со смартфоном?</h2>
+                    <p id="error-message" class="text-red-500 mb-4 hidden"></p>
+
+                    <div class="grid md:grid-cols-2 gap-8">
+                        <!-- Диаграмма -->
+                        <div class="flex justify-center items-center min-h-[250px] bg-gray-50 rounded-lg p-4">
+                             <canvas id="results-chart" class="max-w-full max-h-80"></canvas>
+                        </div>
+                        <!-- Статистика -->
+                        <div>
+                            <div class="bg-gray-50 rounded-lg p-6 h-full flex flex-col">
+                                <h3 class="font-semibold text-gray-700 mb-4 flex items-center text-lg">
+                                    <i class="fas fa-info-circle mr-2 text-indigo-600"></i> Статистика ответов
+                                </h3>
+                                <div id="results-list" class="space-y-3 flex-grow">
+                                    <!-- Результаты будут загружены сюда -->
+                                    <p class="text-gray-500 italic">Данные не загружены.</p>
+                                </div>
+                                <div class="mt-6 pt-4 border-t border-gray-200">
+                                    <p class="text-sm text-gray-500">
+                                        <i class="fas fa-users mr-1"></i> Всего ответов: <span id="total-responses" class="font-medium text-gray-700">0</span>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div> <!-- /results-content -->
+
+                <div class="mt-8 pt-6 border-t border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-4">
+                     <a href="/" class="text-indigo-600 hover:text-indigo-800 font-medium inline-flex items-center order-2 sm:order-1">
+                        <i class="fas fa-arrow-left mr-2"></i> Вернуться к опросу
+                    </a>
+                    <button id="reset-button" onclick="resetSurvey()" class="text-red-600 hover:text-red-800 font-medium flex items-center order-1 sm:order-2 bg-red-50 hover:bg-red-100 px-3 py-1 rounded transition">
+                        <i class="fas fa-trash-alt mr-2"></i> Сбросить все результаты
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        let resultsChart = null; // Переменная для хранения экземпляра диаграммы
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const resultsContent = document.getElementById('results-content');
+        const errorMessage = document.getElementById('error-message');
+        const resetButton = document.getElementById('reset-button');
+
+        // --- Показать ошибку ---
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.remove('hidden');
+            loadingIndicator.classList.add('hidden'); // Скрыть индикатор загрузки
+             resultsContent.classList.add('hidden'); // Скрыть основное содержимое тоже
+        }
+
+        // --- Загрузка и отображение результатов ---
+        async function displayResults() {
+            loadingIndicator.classList.remove('hidden');
+            resultsContent.classList.add('hidden');
+            errorMessage.classList.add('hidden');
+
+            try {
+                const response = await fetch('/api/results', { method: 'GET' }'); // Запрос к нашему серверу
+                if (!response.ok) {
+                    throw new Error(`Не удалось загрузить данные (${response.status})`);
+                }
+                const surveyResults = await response.json();
+
+                 if (typeof surveyResults !== 'object' || surveyResults === null) {
+                    throw new Error("Получены неверные данные от сервера.");
+                 }
+
+                // Обновляем список результатов
+                const resultsList = document.getElementById('results-list');
+                resultsList.innerHTML = ''; // Очищаем перед заполнением
+
+                let totalResponses = 0;
+                const optionsOrder = ["Менее 1 часа", "2-3 часа", "3-4 часа", "4-6 часов", "Более 6 часов"];
+
+                optionsOrder.forEach(option => {
+                    const count = surveyResults[option] || 0;
+                    resultsList.innerHTML += `
+                        <div class="flex justify-between items-center text-sm">
+                            <span class="text-gray-600">${option}</span>
+                            <span class="font-semibold text-gray-800">${count}</span>
+                        </div>
+                    `;
+                    totalResponses += count;
+                });
+
+                if (totalResponses === 0 && !Object.values(surveyResults).some(v => v > 0)) {
+                    resultsList.innerHTML = '<p class="text-gray-500 italic">Пока нет ни одного ответа.</p>';
+                }
+
+                document.getElementById('total-responses').textContent = totalResponses;
+
+                // Создаем или обновляем диаграмму
+                createChart(surveyResults, optionsOrder);
+
+                // Показываем результаты
+                loadingIndicator.classList.add('hidden');
+                resultsContent.classList.remove('hidden');
+
+            } catch (error) {
+                console.error("Ошибка при загрузке результатов:", error);
+                showError(error.message || "Произошла ошибка при загрузке результатов.");
+            }
+        }
+
+        // --- Создание/обновление диаграммы ---
+        function createChart(data, labelsOrder) {
+            const ctx = document.getElementById('results-chart').getContext('2d');
+
+            if (resultsChart) {
+                resultsChart.destroy(); // Уничтожаем старую диаграмму перед созданием новой
+            }
+
+            const labels = labelsOrder;
+            const values = labels.map(label => data[label] || 0);
+
+            const backgroundColors = ['#818cf8', '#6366f1', '#4f46e5', '#4338ca', '#3730a3'];
+            const borderColors = ['#e0e7ff', '#c7d2fe', '#a5b4fc', '#818cf8', '#6366f1'];
+
+             const total = values.reduce((a, b) => a + b, 0);
+
+            resultsChart = new Chart(ctx, {
+                 type: total > 0 ? 'pie' : 'bar', // Показываем столбцы, если данных нет, иначе pie
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Кол-во ответов',
+                        data: values,
+                        backgroundColor: backgroundColors,
+                        borderColor: borderColors,
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: total > 0, position: 'bottom', labels: { padding: 20, font: { size: 12 } } }, // Скрыть легенду если нет данных
+                        tooltip: {
+                             enabled: total > 0, // Отключить тултипы если нет данных
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw || 0;
+                                    const currentTotal = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                    const percentage = currentTotal === 0 ? 0 : Math.round((value / currentTotal) * 100);
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
+                        },
+                        title: { display: false }
+                    },
+                    // Скрыть оси для pie-чарта, но показать для bar-чарта (когда нет данных)
+                     scales: {
+                         y: { display: total === 0, beginAtZero: true, ticks: { stepSize: 1 } }, // Показать ось Y для bar
+                         x: { display: total === 0 } // Показать ось X для bar
+                     }
+                }
+            });
+        }
+
+        // --- Сброс результатов ---
+        async function resetSurvey() {
+            if (confirm('Вы уверены, что хотите сбросить ВСЕ результаты опроса? Это действие нельзя отменить.')) {
+                resetButton.disabled = true;
+                resetButton.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Сброс...';
+                errorMessage.classList.add('hidden');
+
+                try {
+                    const response = await fetch('/api/results', { method: 'POST',headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reset' }) });
+                    if (!response.ok) {
+                         throw new Error(`Ошибка сервера при сбросе (${response.status})`);
+                    }
+                    // Успешно сброшено, перезагружаем данные
+                    await displayResults();
+                    alert("Результаты успешно сброшены."); // Сообщение об успехе
+
+                } catch (error) {
+                     console.error("Ошибка при сбросе результатов:", error);
+                     showError(error.message || "Не удалось сбросить результаты.");
+                } finally {
+                     resetButton.disabled = false;
+                     resetButton.innerHTML = '<i class="fas fa-trash-alt mr-2"></i> Сбросить все результаты';
+                }
+            }
+        }
+
+        // --- Выполняем при загрузке страницы ---
+        document.addEventListener('DOMContentLoaded', displayResults);
+
+    </script>
+</body>
+</html>
